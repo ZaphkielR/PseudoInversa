@@ -1,55 +1,42 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
-// Definición de constantes para las dimensiones de la matriz
-// ROWS: número de filas (3)
-// COLS: número de columnas (2)
-#define ROWS 3
-#define COLS 2
+// Definición de constante para el tamaño máximo de la matriz
+// MAX: número máximo de filas o columnas que puede tener la matriz
+#define MAX 100
 
-// Matriz original A de 3x2 con valores constantes
-// Esta matriz será la base para calcular su pseudo-inversa
-const double A[ROWS][COLS] = {
-    {1, 2},  // Fila 1
-    {3, 4},  // Fila 2
-    {5, 6}   // Fila 3
-};
-
-
+// -----------------------------------------------------------------------------
 // Función para imprimir cualquier matriz en la consola
 // Parámetros:
 // - rows: número de filas de la matriz
 // - cols: número de columnas de la matriz
 // - A: matriz a imprimir (constante para evitar modificaciones)
+// -----------------------------------------------------------------------------
 void printMatrix(int rows, int cols, const double A[rows][cols]) {
-    // Bucle externo para filas
     for (int i = 0; i < rows; i++) {
-        // Bucle interno para columnas
         for (int j = 0; j < cols; j++) {
-            // Imprime cada elemento con formato: 8 dígitos totales y 4 decimales
-            printf("%8.4f ", A[i][j]);
+            printf("%10.6f ", A[i][j]);
         }
-        // Nueva línea después de cada fila
         printf("\n");
     }
 }
 
+// -----------------------------------------------------------------------------
 // Función para transponer una matriz
 // Parámetros:
 // - rows: número de filas de la matriz original
 // - cols: número de columnas de la matriz original
 // - A: matriz original a transponer
 // - B: matriz resultado donde se guardará la transpuesta
+// -----------------------------------------------------------------------------
 void transpose(int rows, int cols, const double A[rows][cols], double B[cols][rows]) {
-    // Bucle para recorrer cada elemento de la matriz
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            // Intercambia filas por columnas
+    for (int i = 0; i < rows; i++)
+        for (int j = 0; j < cols; j++)
             B[j][i] = A[i][j];
-        }
-    }
 }
 
+// -----------------------------------------------------------------------------
 // Función para multiplicar dos matrices
 // Parámetros:
 // - m: número de filas de A
@@ -58,105 +45,210 @@ void transpose(int rows, int cols, const double A[rows][cols], double B[cols][ro
 // - A: primera matriz
 // - B: segunda matriz
 // - C: matriz resultado de la multiplicación
+// -----------------------------------------------------------------------------
 void multiplyMatrix(int m, int n, int p, const double A[m][n], const double B[n][p], double C[m][p]) {
-    // Bucle externo para filas de C
-    for (int i = 0; i < m; i++) {
-        // Bucle interno para columnas de C
+    for (int i = 0; i < m; i++)
         for (int j = 0; j < p; j++) {
-            // Inicializa cada elemento en 0
             C[i][j] = 0;
-            // Bucle para sumar productos de elementos correspondientes
-            for (int k = 0; k < n; k++) {
+            for (int k = 0; k < n; k++)
                 C[i][j] += A[i][k] * B[k][j];
-            }
         }
-    }
 }
 
+// -----------------------------------------------------------------------------
 // Función para calcular la inversa de una matriz cuadrada usando Gauss-Jordan
 // Parámetros:
 // - n: dimensión de la matriz cuadrada
 // - A: matriz original
 // - inv: matriz donde se guardará la inversa
+// -----------------------------------------------------------------------------
 void inverseMatrix(int n, double A[n][n], double inv[n][n]) {
-    // Crear matriz aumentada de tamaño n x 2n
-    double aug[n][2 * n];
+    double aug[n][2 * n];  // Matriz aumentada [A | I]
 
-    // Construir matriz aumentada [A | I]
-    // Donde I es la matriz identidad
-    for (int i = 0; i < n; i++) {
+    // Construcción de la matriz aumentada
+    for (int i = 0; i < n; i++)
         for (int j = 0; j < n; j++) {
-            // Copiar elementos de A a la parte izquierda
-            aug[i][j] = A[i][j];
-            // Crear matriz identidad en la parte derecha
-            aug[i][j + n] = (i == j) ? 1.0 : 0.0;
+            aug[i][j] = A[i][j];  // Parte izquierda A
+            aug[i][j + n] = (i == j) ? 1.0 : 0.0;  // Parte derecha I
         }
-    }
 
-    // Método de Gauss-Jordan para encontrar la inversa
+    // Aplicar el método de Gauss-Jordan
     for (int i = 0; i < n; i++) {
-        // Obtener el pivote (elemento diagonal)
         double pivot = aug[i][i];
 
-        // Normalizar la fila i dividiendo por el pivote
-        for (int j = 0; j < 2 * n; j++) {
-            aug[i][j] /= pivot;
+        // Validación de pivote distinto de cero
+        if (fabs(pivot) < 1e-10) {
+            fprintf(stderr, "Error: matriz no invertible (pivote cero)\n");
+            exit(1);
         }
 
-        // Eliminar elementos en otras filas usando la fila normalizada
+        // Normalizar fila pivote
+        for (int j = 0; j < 2 * n; j++)
+            aug[i][j] /= pivot;
+
+        // Eliminar elementos en otras filas
         for (int k = 0; k < n; k++) {
             if (k != i) {
-                // Calcular factor para eliminar elemento
                 double factor = aug[k][i];
-                for (int j = 0; j < 2 * n; j++) {
-                    // Eliminar elemento usando la fila normalizada
+                for (int j = 0; j < 2 * n; j++)
                     aug[k][j] -= factor * aug[i][j];
-                }
             }
         }
     }
 
-    // Extraer la matriz inversa de la parte derecha de la matriz aumentada
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            // La inversa está en la parte derecha de la matriz aumentada
+    // Extraer la matriz inversa desde la parte derecha de la matriz aumentada
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
             inv[i][j] = aug[i][j + n];
-        }
-    }
 }
 
+// -----------------------------------------------------------------------------
+// Función para calcular el rango de una matriz usando eliminación de Gauss
+// Parámetros:
+// - m: número de filas
+// - n: número de columnas
+// - A: matriz original
+// Retorna:
+// - rango de la matriz (número de filas no nulas en forma escalonada)
+// -----------------------------------------------------------------------------
+int rango(int m, int n, double A[m][n]) {
+    double temp[m][n];
+    int rank = 0;
+
+    // Copiar la matriz original a una temporal
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j < n; j++)
+            temp[i][j] = A[i][j];
+
+    // Recorrer columnas buscando pivotes
+    for (int i = 0; i < n; i++) {
+        int pivotRow = -1;
+
+        // Buscar fila con elemento distinto de 0 en la columna i
+        for (int j = rank; j < m; j++) {
+            if (fabs(temp[j][i]) > 1e-10) {
+                pivotRow = j;
+                break;
+            }
+        }
+
+        if (pivotRow != -1) {
+            // Intercambiar filas
+            for (int k = 0; k < n; k++) {
+                double tmp = temp[rank][k];
+                temp[rank][k] = temp[pivotRow][k];
+                temp[pivotRow][k] = tmp;
+            }
+
+            // Eliminar elementos de otras filas
+            for (int j = 0; j < m; j++) {
+                if (j != rank) {
+                    double factor = temp[j][i] / temp[rank][i];
+                    for (int k = 0; k < n; k++)
+                        temp[j][k] -= factor * temp[rank][k];
+                }
+            }
+
+            rank++;  // Aumentar el conteo de filas linealmente independientes
+        }
+    }
+
+    return rank;
+}
+
+// -----------------------------------------------------------------------------
+// Función principal del programa
+// Lee la matriz desde "entrada.ent", calcula la pseudoinversa si es posible,
+// y guarda el resultado en "salida.sal".
+// -----------------------------------------------------------------------------
 int main() {
-    // Imprimir la matriz original A
-    printf("Matriz original A:\n");
-    printMatrix(ROWS, COLS, A);
-    printf("\n");
+    int m, n;
+    double A[MAX][MAX];
 
-    // Calcular y mostrar la transpuesta de A
-    printf("Transpuesta de A (AT):\n");
-    double AT[COLS][ROWS];
-    transpose(ROWS, COLS, A, AT);
-    printMatrix(COLS, ROWS, AT);
-    printf("\n");
+    // Abrir archivo de entrada
+    FILE *fin = fopen("entrada.ent", "r");
+    if (!fin) {
+        perror("Error al abrir entrada.ent");
+        return 1;
+    }
 
-    // Calcular y mostrar el producto AT * A
-    printf("Producto AT * A:\n");
-    double ATA[COLS][COLS];
-    multiplyMatrix(COLS, ROWS, COLS, AT, A, ATA);
-    printMatrix(COLS, COLS, ATA);
-    printf("\n");
+    // Leer dimensiones de la matriz
+    fscanf(fin, "%d %d", &m, &n);
 
-    // Calcular y mostrar la inversa de ATA
-    printf("Inversa de ATA:\n");
-    double invATA[COLS][COLS];
-    inverseMatrix(COLS, ATA, invATA);
-    printMatrix(COLS, COLS, invATA);
-    printf("\n");
+    // Leer elementos de la matriz A
+    for (int i = 0; i < m; i++)
+        for (int j = 0; j < n; j++)
+            fscanf(fin, "%lf", &A[i][j]);
 
-    // Calcular y mostrar la pseudo-inversa final P
-    printf("Pseudo-inversa de A:\n");
-    double P[COLS][ROWS];
-    multiplyMatrix(COLS, COLS, ROWS, invATA, AT, P);
-    printMatrix(COLS, ROWS, P);
-    
+    fclose(fin);
+
+    // Calcular el rango de la matriz
+    int r = rango(m, n, A);
+
+    // Abrir archivo de salida
+    FILE *fout = fopen("salida.sal", "w");
+    if (!fout) {
+        perror("Error al crear salida.sal");
+        return 1;
+    }
+
+    // Verificar si tiene rango completo
+    if (r < (m < n ? m : n)) {
+        // No tiene pseudoinversa
+        fprintf(fout, "-1\n");
+        fclose(fout);
+        return 0;
+    }
+
+    // Caso: pseudoinversa por la izquierda
+    if (r == n) {
+        double AT[n][m];
+        transpose(m, n, A, AT);
+
+        double ATA[n][n];
+        multiplyMatrix(n, m, n, AT, A, ATA);
+
+        double invATA[n][n];
+        inverseMatrix(n, ATA, invATA);
+
+        double P[n][m];
+        multiplyMatrix(n, n, m, invATA, AT, P);
+
+        fprintf(fout, "L\n");
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < m; j++) {
+                fprintf(fout, "%.6f ", P[i][j]);
+            }
+            fprintf(fout, "\n");
+        }
+
+    // Caso: pseudoinversa por la derecha
+    } else if (r == m) {
+        double AT[n][m];
+        transpose(m, n, A, AT);
+
+        double AAT[m][m];
+        multiplyMatrix(m, n, m, A, AT, AAT);
+
+        double invAAT[m][m];
+        inverseMatrix(m, AAT, invAAT);
+
+        double P[n][m];
+        multiplyMatrix(n, m, m, AT, invAAT, P);
+
+        fprintf(fout, "R\n");
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < m; j++) {
+                fprintf(fout, "%.6f ", P[i][j]);
+            }
+            fprintf(fout, "\n");
+        }
+
+    } else {
+        // No tiene pseudoinversa válida
+        fprintf(fout, "-1\n");
+    }
+
+    fclose(fout);
     return 0;
 }
