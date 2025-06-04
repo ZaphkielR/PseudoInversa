@@ -1,3 +1,8 @@
+//Alumnos: Christian Delgado, Rafael Morales
+//Fecha: 10-06-2025
+//Profesor: Sergio Antonio Baltierra Valenzuela
+//Carrera: Ingenieria Civil Informatica
+//Ramo: Computación de Alto Rendimiento
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
