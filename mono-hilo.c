@@ -16,7 +16,7 @@ void printMatrix(double** matriz, int m, int n) {
             printf("%lf ", matriz[i][j]);
         }
         printf("\n");
-    }
+    } 
 }
 
 // Función para leer una matriz desde un archivo
@@ -285,7 +285,7 @@ int main() {
     // Variables para las dimensiones de la matriz
     int m, n;
     // Leer la matriz del archivo "entrada.ent"
-    double** matriz = leer_matriz("entrada.ent", &m, &n);
+    double** matriz = leer_matriz("entrada_6.ent", &m, &n);
 
     // Verificar si hubo error al leer la matriz
     if (!matriz) {
@@ -294,7 +294,6 @@ int main() {
     }
 
     // Imprimir la matriz original
-    printMatrix(matriz, m, n);
 
     // Calcular el rango de la matriz
     int r = rango(m, n, matriz);
@@ -310,38 +309,30 @@ int main() {
     if (r == m) {
         // Calcular la transpuesta de A
         double** AT = transpuesta(m, n, matriz);
-        printMatrix(AT, n, m);
 
         // Calcular A * A^T
         double** ATA = multiplicar(m, n, m, matriz, AT);
-        printMatrix(ATA, m, m);
 
         // Calcular la inversa de A * A^T
         double** invATA = inverse(m, ATA);
-        printMatrix(invATA, m, m);
         
         // Calcular la pseudo-inversa: P = A^T * (A * A^T)^-1
         double** P = multiplicar(n, m, m, AT, invATA);
-        printMatrix(P, n, m);
     }
 
     // Caso 2: rango = número de columnas (n)
     if (r == n) {
         // Calcular la transpuesta de A
         double** AT = transpuesta(m, n, matriz);
-        printMatrix(AT, n, m);
 
         // Calcular A^T * A
         double** ATA = multiplicar(n, m, n, AT, matriz);
-        printMatrix(ATA, n, n);
 
         // Calcular la inversa de A^T * A
         double** invATA = inverse(n, ATA);
-        printMatrix(invATA, n, n);
         
         // Calcular la pseudo-inversa: P = (A^T * A)^-1 * A^T
         double** P = multiplicar(n, n, m, invATA, AT);
-        printMatrix(P, n, m);
     }
 
     return 0;

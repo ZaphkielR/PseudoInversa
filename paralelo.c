@@ -268,7 +268,6 @@ int main() {
         return 1;
     }
 
-    printMatrix(matriz, m, n);
     int r = rango(m, n, matriz);
 
     if (r < (m < n ? m : n)) {
@@ -278,30 +277,22 @@ int main() {
 
     if (r == m) {
         double** AT = transpuesta(m, n, matriz);
-        printMatrix(AT, n, m);
 
         double** ATA = multiplicar(m, n, m, matriz, AT);
-        printMatrix(ATA, m, m);
 
         double** invATA = inverse(m, ATA);
-        printMatrix(invATA, m, m);
         
         double** P = multiplicar(n, m, m, AT, invATA);
-        printMatrix(P, n, m);
     }
 
     if (r == n) {
         double** AT = transpuesta(m, n, matriz);
-        printMatrix(AT, n, m);
 
         double** ATA = multiplicar(n, m, n, AT, matriz);
-        printMatrix(ATA, n, n);
 
         double** invATA = inverse(n, ATA);
-        printMatrix(invATA, n, n);
         
         double** P = multiplicar(n, n, m, invATA, AT);
-        printMatrix(P, n, m);
     }
 
     return 0;
