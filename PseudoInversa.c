@@ -3,6 +3,9 @@
 //Profesor: Sergio Antonio Baltierra Valenzuela
 //Carrera: Ingenieria Civil Informatica
 //Ramo: Computación de Alto Rendimiento
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
