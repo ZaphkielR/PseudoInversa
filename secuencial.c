@@ -9,14 +9,25 @@
 #include <math.h>
 
 // Función para imprimir una matriz en la consola
-void printMatrix(double** matriz, int m, int n) {
+void printMatrix(double** matriz, char* label, int m, int n) {    
+    FILE* archivo = fopen("salida.sal", "w");
+
+    if (!archivo) {
+        perror("Error al abrir el archivo");
+        return;
+    }
+
+    fprintf(archivo, "%s\n", label);
+    
     // Imprime cada elemento de la matriz en formato de tabla
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
-            printf("%lf ", matriz[i][j]);
+            fprintf(archivo, "%lf ", matriz[i][j]);
         }
-        printf("\n");
+        fprintf(archivo, "\n");
     } 
+
+    fclose(archivo);
 }
 
 // Función para leer una matriz desde un archivo
@@ -52,10 +63,6 @@ double** leer_matriz(const char* nombre_archivo, int* m, int* n) {
         matriz[i] = (double*)malloc(*n * sizeof(double));
         if (!matriz[i]) {
             fprintf(stderr, "Error al asignar memoria para la fila %d\n", i);
-            // Liberar memoria asignada previamente en caso de error
-            for (int j = 0; j < i; j++)
-                free(matriz[j]);
-            free(matriz);
             fclose(archivo);
             return NULL;
         }
@@ -66,10 +73,6 @@ double** leer_matriz(const char* nombre_archivo, int* m, int* n) {
         for (int j = 0; j < *n; j++) {
             if (fscanf(archivo, "%lf", &matriz[i][j]) != 1) {
                 fprintf(stderr, "Error al leer el elemento (%d, %d)\n", i, j);
-                // Liberar toda la memoria asignada en caso de error
-                for (int k = 0; k <= i; k++)
-                    free(matriz[k]);
-                free(matriz);
                 fclose(archivo);
                 return NULL;
             }
@@ -191,9 +194,6 @@ double** inverse(int m, double** A) {
         aug[i] = (double*)malloc(2 * m * sizeof(double));
         if (!aug[i]) {
             fprintf(stderr, "Error al reservar memoria (fila aug %d)\n", i);
-            // Liberar memoria asignada previamente en caso de error
-            for (int k = 0; k < i; k++) free(aug[k]);
-            free(aug);
             return NULL;
         }
 
@@ -219,8 +219,6 @@ double** inverse(int m, double** A) {
 
         // Si no se encuentra un pivote válido, la matriz no es invertible
         if (fabs(aug[piv][col]) < EPS) {
-            for (int i = 0; i < m; i++) free(aug[i]);
-            free(aug);
             fprintf(stderr, "Error: matriz no invertible (pivote cero)\n");
             return NULL;
         }
@@ -250,9 +248,6 @@ double** inverse(int m, double** A) {
     double** inv = (double**)malloc(m * sizeof(double*));
     if (!inv) {
         fprintf(stderr, "Error al reservar memoria (inv)\n");
-        // Liberar memoria auxiliar
-        for (int i = 0; i < m; i++) free(aug[i]);
-        free(aug);
         return NULL;
     }
 
@@ -261,11 +256,6 @@ double** inverse(int m, double** A) {
         inv[i] = (double*)malloc(m * sizeof(double));
         if (!inv[i]) {
             fprintf(stderr, "Error al reservar memoria (fila inv %d)\n", i);
-            // Liberar toda la memoria asignada en caso de error
-            for (int k = 0; k < i; k++) free(inv[k]);
-            free(inv);
-            for (int k = 0; k < m; k++) free(aug[k]);
-            free(aug);
             return NULL;
         }
         // Copiar la parte derecha de la matriz aumentada
@@ -273,27 +263,22 @@ double** inverse(int m, double** A) {
             inv[i][j] = aug[i][j + m];
     }
 
-    // Liberar memoria auxiliar
-    for (int i = 0; i < m; i++)
-        free(aug[i]);
-    free(aug);
-
     return inv;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     // Variables para las dimensiones de la matriz
     int m, n;
-    // Leer la matriz del archivo "entrada.ent"
-    double** matriz = leer_matriz("entrada_6.ent", &m, &n);
+
+    // Leer la matriz del archivo de entrada entregado por terminal
+    const char *entrada = argv[1];  // Guardamos la cadena en una variable
+    double** matriz = leer_matriz(entrada, &m, &n);
 
     // Verificar si hubo error al leer la matriz
     if (!matriz) {
         printf("No se pudo leer la matriz.\n");
         return 1;
     }
-
-    // Imprimir la matriz original
 
     // Calcular el rango de la matriz
     int r = rango(m, n, matriz);
@@ -318,6 +303,8 @@ int main() {
         
         // Calcular la pseudo-inversa: P = A^T * (A * A^T)^-1
         double** P = multiplicar(n, m, m, AT, invATA);
+
+        printMatrix(P, "R", n, m);
     }
 
     // Caso 2: rango = número de columnas (n)
@@ -333,6 +320,8 @@ int main() {
         
         // Calcular la pseudo-inversa: P = (A^T * A)^-1 * A^T
         double** P = multiplicar(n, n, m, invATA, AT);
+
+        printMatrix(P, "L", n, m);
     }
 
     return 0;
