@@ -3,7 +3,7 @@
 #include <math.h>
 #include <omp.h>
 
-// Función para imprimir una matriz en la consola
+// Imprimir matriz a archivo
 void printMatrix(double** matriz, char* label, int m, int n) {    
     FILE* archivo = fopen("salida.sal", "w");
 
@@ -73,67 +73,76 @@ double** leer_matriz(const char* nombre_archivo, int* m, int* n) {
 }
 
 double rango(int m, int n, double** A) {
-    // Crear una copia temporal de la matriz para no modificar la original
     double temp[m][n];
     int rank = 0;
 
-    // Copiar la matriz original a la temporal
+    // Copiar matriz (puede paralelizarse si m y n son grandes)
+    #pragma omp parallel for if(m * n > 10000)
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             temp[i][j] = A[i][j];
         }
     }
 
-    // Algoritmo de eliminación gaussiana
     for (int i = 0; i < n; i++) {
         int pivotRow = -1;
+        double maxVal = 0.0;
 
-        // Buscar el pivote (primer elemento no nulo)
-        for (int j = rank; j < m; j++) {
-            if (fabs(temp[j][i]) > 1e-10) {
-                pivotRow = j;
-                break;
+        // Paralelizar la búsqueda del pivote
+        #pragma omp parallel
+        {
+            int local_pivot = -1;
+            double local_max = 0.0;
+
+            #pragma omp for
+            for (int j = rank; j < m; j++) {
+                if (fabs(temp[j][i]) > local_max) {
+                    local_max = fabs(temp[j][i]);
+                    local_pivot = j;
+                }
+            }
+
+            #pragma omp critical
+            {
+                if (local_max > maxVal) {
+                    maxVal = local_max;
+                    pivotRow = local_pivot;
+                }
             }
         }
 
-        // Si encontramos un pivote
         if (pivotRow != -1) {
-            // Intercambiar filas si es necesario
+            // Intercambio de filas (secuencial, pero rápido)
             for (int k = 0; k < n; k++) {
-                int tmp = temp[rank][k];
+                double tmp = temp[rank][k];
                 temp[rank][k] = temp[pivotRow][k];
                 temp[pivotRow][k] = tmp;
             }
 
-            // Eliminación gaussiana: hacer cero los elementos debajo del pivote
+            // Eliminación gaussiana paralela
             #pragma omp parallel for
             for (int j = 0; j < m; j++) {
                 if (j != rank) {
-                    int factor = temp[j][i] / temp[rank][i];
-                    for (int k = 0; k < n; k++)
+                    double factor = temp[j][i] / temp[rank][i];
+                    for (int k = 0; k < n; k++) {
                         temp[j][k] -= factor * temp[rank][k];
+                    }
                 }
             }
-
             rank++;
         }
     }
-
     return rank;
 }
 
-// Función para calcular la transpuesta de una matriz
+// Transpuesta paralela
 double** transpuesta(int m, int n, double** A) {
-    // Crear matriz transpuesta (n x m)
     double** B = (double**)malloc(n * sizeof(double*));
-
-    // Asignar memoria para cada fila
     for (int i = 0; i < n; i++) {
         B[i] = (double*)malloc(m * sizeof(double));
     }
 
-    // Paralelizar el bucle exterior sobre i
-    #pragma omp parallel for
+    #pragma omp parallel for collapse(2)
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             B[j][i] = A[i][j];
@@ -143,24 +152,32 @@ double** transpuesta(int m, int n, double** A) {
     return B;
 }
 
-// Función para multiplicar dos matrices
+
+
+// Multiplicación paralela
 double** multiplicar(int m, int n, int p, double** A, double** B) {
-    // Crear matriz resultado (m x p)
+    // Asignación de memoria para la matriz resultante C
     double** C = (double**)malloc(m * sizeof(double*));
-    
-    // Asignar memoria para cada fila
     for (int i = 0; i < m; i++) {
         C[i] = (double*)malloc(p * sizeof(double));
+        for (int j = 0; j < p; j++) {
+            C[i][j] = 0; // Inicializar C para evitar basura
+        }
     }
 
-    // Realizar la multiplicación de matrices
-    #pragma omp parallel for collapse(2)
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < p; j++) {
-            C[i][j] = 0;
-            // Sumatorio de la multiplicación
-            for (int k = 0; k < n; k++) {
-                C[i][j] += A[i][k] * B[k][j];
+    // Región paralela con variables compartidas
+    #pragma omp parallel shared(A, B, C, m, n, p)
+    {
+        // Obtener el número total de hilos y el ID del hilo actual
+        int num_threads = omp_get_num_threads();
+        int thread_id = omp_get_thread_num();
+
+        // Distribución intercalada: cada hilo procesa filas i donde i = thread_id + k*num_threads
+        for (int i = thread_id; i < m; i += num_threads) {
+            for (int j = 0; j < p; j++) {
+                for (int k = 0; k < n; k++) {
+                    C[i][j] += A[i][k] * B[k][j];
+                }
             }
         }
     }
@@ -168,118 +185,97 @@ double** multiplicar(int m, int n, int p, double** A, double** B) {
     return C;
 }
 
-// Función para calcular la inversa de una matriz cuadrada usando Gauss-Jordan
+// Inversa Gauss-Jordan paralela
 double** inverse(int m, double** A) {
-    const double EPS = 1e-12;  // Tolerancia para considerar un número como cero
-    
-    // Crear matriz aumentada [A | I] donde I es la matriz identidad
+    const double EPS = 1e-12;
     double** aug = (double**)malloc(m * sizeof(double*));
-    if (!aug) {
-        fprintf(stderr, "Error al reservar memoria (aug)\n");
-        return NULL;
-    }
-
-    // Asignar memoria para cada fila
     for (int i = 0; i < m; i++) {
         aug[i] = (double*)malloc(2 * m * sizeof(double));
-        if (!aug[i]) {
-            fprintf(stderr, "Error al reservar memoria (fila aug %d)\n", i);
-            return NULL;
-        }
     }
 
-    // Paralelizar la creación de la matriz aumentada
     #pragma omp parallel for
     for (int i = 0; i < m; i++) {
-        // Primera mitad: copia de A
         for (int j = 0; j < m; j++) {
             aug[i][j] = A[i][j];
         }
-        // Segunda mitad: matriz identidad
         for (int j = 0; j < m; j++) {
             aug[i][j + m] = (i == j) ? 1.0 : 0.0;
         }
     }
 
-    /* Algoritmo de Gauss-Jordan para calcular la inversa */
     for (int col = 0, row = 0; col < m && row < m; col++, row++) {
-
-        /* 1. Buscar pivote (elemento máximo en la columna) */
         int piv = row;
-        for (int k = row + 1; k < m; k++)
-            if (fabs(aug[k][col]) > fabs(aug[piv][col]))
-                piv = k;
+        double maxVal = fabs(aug[row][col]);
 
-        // Si no se encuentra un pivote válido, la matriz no es invertible
+        // Paralelizar la búsqueda del pivote
+        #pragma omp parallel shared(aug, piv, maxVal, row, col, m)
+        {
+            int local_piv = row;
+            double local_max = maxVal;
+
+            // Distribución intercalada para buscar el pivote
+            int num_threads = omp_get_num_threads();
+            int thread_id = omp_get_thread_num();
+            for (int k = row + thread_id; k < m; k += num_threads) {
+                if (fabs(aug[k][col]) > local_max) {
+                    local_max = fabs(aug[k][col]);
+                    local_piv = k;
+                }
+            }
+
+            // Reducir el máximo local al global
+            #pragma omp critical
+            {
+                if (local_max > maxVal) {
+                    maxVal = local_max;
+                    piv = local_piv;
+                }
+            }
+        }
+
         if (fabs(aug[piv][col]) < EPS) {
-            fprintf(stderr, "Error: matriz no invertible (pivote cero)\n");
+            fprintf(stderr, "Error: matriz no invertible\n");
             return NULL;
         }
 
-        /* 2. Intercambiar filas si es necesario */
         if (piv != row) {
             double* tmp = aug[piv];
             aug[piv] = aug[row];
             aug[row] = tmp;
         }
 
-        /* 3. Normalizar la fila pivote (dividir por el pivote) */
         double piv_val = aug[row][col];
         #pragma omp parallel for
-        for (int j = 0; j < 2 * m; j++)
+        for (int j = 0; j < 2 * m; j++) {
             aug[row][j] /= piv_val;
-
-        /* 4. Eliminar la columna en las demás filas */
-        #pragma omp parallel for
-        for (int i = 0; i < m; i++) {
-            if (i == row) continue;
-            double factor = aug[i][col];
-            #pragma omp parallel for
-            for (int j = 0; j < 2 * m; j++)
-                aug[i][j] -= factor * aug[row][j];
         }
-    }
 
-    /* Extraer la parte derecha como matriz inversa */
-    double** inv = (double**)malloc(m * sizeof(double*));
-    if (!inv) {
-        fprintf(stderr, "Error al reservar memoria (inv)\n");
-        return NULL;  // Esto está fuera de la región paralela, por lo que es válido
-    }
+        // Eliminación de filas en paralelo con distribución intercalada
+        #pragma omp parallel shared(aug, row, col, m)
+        {
+            int num_threads = omp_get_num_threads();
+            int thread_id = omp_get_thread_num();
 
-    int error = 0;  // Bandera para indicar si hubo un error
-
-    // Paralelizar la copia de la parte derecha
-    #pragma omp parallel for
-    for (int i = 0; i < m; i++) {
-        if (error) continue;  // Si ya hay un error, no hacemos nada más
-
-        inv[i] = (double*)malloc(m * sizeof(double));
-        if (!inv[i]) {
-            #pragma omp critical
-            {
-                if (!error) {  // Solo el primer fallo reporta el error
-                    fprintf(stderr, "Error al reservar memoria (fila inv %d)\n", i);
-                    error = 1;
+            // Cada hilo procesa filas de forma intercalada
+            for (int i = thread_id; i < m; i += num_threads) {
+                if (i != row) {
+                    double factor = aug[i][col];
+                    for (int j = 0; j < 2 * m; j++) {
+                        aug[i][j] -= factor * aug[row][j];
+                    }
                 }
             }
-            continue;
         }
+    }
 
-        for (int j = 0; j < m; j++)
+    double** inv = (double**)malloc(m * sizeof(double*));
+    #pragma omp parallel for
+    for (int i = 0; i < m; i++) {
+        inv[i] = (double*)malloc(m * sizeof(double));
+        for (int j = 0; j < m; j++) {
             inv[i][j] = aug[i][j + m];
-    }
-
-    // Verificar si hubo un error después de la región paralela
-    if (error) {
-        // Liberar la memoria asignada hasta ahora
-        for (int i = 0; i < m; i++) {
-            if (inv[i]) free(inv[i]);
         }
-        free(inv);
-        return NULL;
     }
-
     return inv;
 }
 
@@ -289,10 +285,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Initialize number of threads
     int num_threads = omp_get_num_procs();
 
-    // If number of threads is specified as second argument
     if (argc > 2) {
         int temp_threads = atoi(argv[2]);
         if (temp_threads > 0) {
@@ -303,61 +297,37 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Establecer el número de hilos para OpenMP
     omp_set_num_threads(num_threads);
 
-    // Variables for matrix dimensions
     int m, n;
 
-    // Read matrix from input file provided by terminal
-    const char *entrada = argv[1];  // Store string in variable
+    const char *entrada = argv[1];
     double** matriz = leer_matriz(entrada, &m, &n);
 
-    // Check if there was an error reading the matrix
     if (!matriz) {
         printf("No se pudo leer la matriz.\n");
         return 1;
     }
 
-    // Calcular el rango de la matriz
     int r = rango(m, n, matriz);
-
-    // Si el rango es menor que el mínimo entre filas y columnas,
-    // la matriz no tiene pseudo-inversa
     if (r < (m < n ? m : n)) {
         printf("-1\n");
         return 0;
     }
 
-    // Caso 1: rango = número de filas (m)
     if (r == m) {
-        // Calcular la transpuesta de A
         double** AT = transpuesta(m, n, matriz);
-
-        // Calcular A * A^T
         double** ATA = multiplicar(m, n, m, matriz, AT);
-
-        // Calcular la inversa de A * A^T
         double** invATA = inverse(m, ATA);
-        
-        // Calcular la pseudo-inversa: P = A^T * (A * A^T)^-1
         double** P = multiplicar(n, m, m, AT, invATA);
 
         printMatrix(P, "R", n, m);
     }
 
-    // Caso 2: rango = número de columnas (n)
     if (r == n) {
-        // Calcular la transpuesta de A
         double** AT = transpuesta(m, n, matriz);
-
-        // Calcular A^T * A
         double** ATA = multiplicar(n, m, n, AT, matriz);
-
-        // Calcular la inversa de A^T * A
         double** invATA = inverse(n, ATA);
-
-        // Calcular la pseudo-inversa: P = A^T * (A * A^T)^-1
         double** P = multiplicar(n, n, m, invATA, AT);
 
         printMatrix(P, "L", n, m);

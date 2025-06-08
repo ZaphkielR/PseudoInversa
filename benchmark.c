@@ -33,7 +33,7 @@ int main() {
     
     double* par_time;
 
-    int N = 12;
+    int N = 3;
     par_time = (double*)malloc(N * sizeof(double));
 
     for (int i = 1; i <= N; i++) {
