@@ -73,32 +73,40 @@ double** leer_matriz(const char* nombre_archivo, int* m, int* n) {
 }
 
 double rango(int m, int n, double** A) {
+    // Matriz de trabajo en pila (si m·n no es demasiado grande)
     double temp[m][n];
     int rank = 0;
 
-    // Copiar matriz (puede paralelizarse si m y n son grandes)
-    #pragma omp parallel for if(m * n > 10000)
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            temp[i][j] = A[i][j];
+    // 1) Copiar A → temp en paralelo
+    #pragma omp parallel shared(A, temp, m, n)
+    {
+        int num_threads = omp_get_num_threads();
+        int tid = omp_get_thread_num();
+        for (int i = tid; i < m; i += num_threads) {
+            for (int j = 0; j < n; j++) {
+                temp[i][j] = A[i][j];
+            }
         }
     }
 
-    for (int i = 0; i < n; i++) {
+    // 2) Eliminación gaussiana con pivoteo
+    for (int col = 0; col < n; col++) {
         int pivotRow = -1;
         double maxVal = 0.0;
 
-        // Paralelizar la búsqueda del pivote
-        #pragma omp parallel
+        // Búsqueda del mayor valor absoluto en la columna 'col'
+        #pragma omp parallel shared(temp, pivotRow, maxVal, m, col, rank)
         {
-            int local_pivot = -1;
+            int num_threads = omp_get_num_threads();
+            int tid = omp_get_thread_num();
             double local_max = 0.0;
+            int local_pivot = -1;
 
-            #pragma omp for
-            for (int j = rank; j < m; j++) {
-                if (fabs(temp[j][i]) > local_max) {
-                    local_max = fabs(temp[j][i]);
-                    local_pivot = j;
+            for (int i = rank + tid; i < m; i += num_threads) {
+                double v = fabs(temp[i][col]);
+                if (v > local_max) {
+                    local_max = v;
+                    local_pivot = i;
                 }
             }
 
@@ -111,27 +119,38 @@ double rango(int m, int n, double** A) {
             }
         }
 
-        if (pivotRow != -1) {
-            // Intercambio de filas (secuencial, pero rápido)
-            for (int k = 0; k < n; k++) {
-                double tmp = temp[rank][k];
-                temp[rank][k] = temp[pivotRow][k];
-                temp[pivotRow][k] = tmp;
-            }
+        if (pivotRow == -1 || maxVal < 1e-12) {
+            // Todos los elementos son (casi) cero → no hay más pivotes
+            break;
+        }
 
-            // Eliminación gaussiana paralela
-            #pragma omp parallel for
-            for (int j = 0; j < m; j++) {
-                if (j != rank) {
-                    double factor = temp[j][i] / temp[rank][i];
-                    for (int k = 0; k < n; k++) {
-                        temp[j][k] -= factor * temp[rank][k];
-                    }
+        // 3) Intercambio de filas (rank) ↔ (pivotRow)
+        if (pivotRow != rank) {
+            for (int j = 0; j < n; j++) {
+                double tmp = temp[rank][j];
+                temp[rank][j] = temp[pivotRow][j];
+                temp[pivotRow][j] = tmp;
+            }
+        }
+
+        // 4) Eliminación de todas las otras filas en paralelo
+        #pragma omp parallel shared(temp, m, n, rank, col)
+        {
+            int num_threads = omp_get_num_threads();
+            int tid = omp_get_thread_num();
+
+            for (int i = tid; i < m; i += num_threads) {
+                if (i == rank) continue;
+                double factor = temp[i][col] / temp[rank][col];
+                for (int j = col; j < n; j++) {
+                    temp[i][j] -= factor * temp[rank][j];
                 }
             }
-            rank++;
         }
+
+        rank++;
     }
+
     return rank;
 }
 
@@ -156,27 +175,23 @@ double** transpuesta(int m, int n, double** A) {
 
 // Multiplicación paralela
 double** multiplicar(int m, int n, int p, double** A, double** B) {
-    // Asignación de memoria para la matriz resultante C
-    double** C = (double**)malloc(m * sizeof(double*));
+    // Reserva de C y puesta a cero
+    double** C = malloc(m * sizeof(double*));
     for (int i = 0; i < m; i++) {
-        C[i] = (double*)malloc(p * sizeof(double));
-        for (int j = 0; j < p; j++) {
-            C[i][j] = 0; // Inicializar C para evitar basura
-        }
+        C[i] = calloc(p, sizeof(double));
     }
 
-    // Región paralela con variables compartidas
+    // Zona paralela: reparto intercalado de filas entre hilos
     #pragma omp parallel shared(A, B, C, m, n, p)
     {
-        // Obtener el número total de hilos y el ID del hilo actual
         int num_threads = omp_get_num_threads();
-        int thread_id = omp_get_thread_num();
+        int tid = omp_get_thread_num();
 
-        // Distribución intercalada: cada hilo procesa filas i donde i = thread_id + k*num_threads
-        for (int i = thread_id; i < m; i += num_threads) {
-            for (int j = 0; j < p; j++) {
-                for (int k = 0; k < n; k++) {
-                    C[i][j] += A[i][k] * B[k][j];
+        for (int i = tid; i < m; i += num_threads) {
+            for (int k = 0; k < n; k++) {
+                double a_ik = A[i][k];
+                for (int j = 0; j < p; j++) {
+                    C[i][j] += a_ik * B[k][j];
                 }
             }
         }
@@ -188,42 +203,46 @@ double** multiplicar(int m, int n, int p, double** A, double** B) {
 // Inversa Gauss-Jordan paralela
 double** inverse(int m, double** A) {
     const double EPS = 1e-12;
-    double** aug = (double**)malloc(m * sizeof(double*));
+    // Matriz aumentada [A | I]
+    double** aug = malloc(m * sizeof(double*));
     for (int i = 0; i < m; i++) {
-        aug[i] = (double*)malloc(2 * m * sizeof(double));
+        aug[i] = malloc(2 * m * sizeof(double));
     }
 
-    #pragma omp parallel for
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < m; j++) {
-            aug[i][j] = A[i][j];
-        }
-        for (int j = 0; j < m; j++) {
-            aug[i][j + m] = (i == j) ? 1.0 : 0.0;
+    // Inicializar en paralelo
+    #pragma omp parallel shared(aug, A, m)
+    {
+        int num_threads = omp_get_num_threads();
+        int tid = omp_get_thread_num();
+        for (int i = tid; i < m; i += num_threads) {
+            for (int j = 0; j < m; j++) {
+                aug[i][j] = A[i][j];
+                aug[i][j + m] = (i == j) ? 1.0 : 0.0;
+            }
         }
     }
 
+    // Proceso de eliminación Gauss–Jordan
     for (int col = 0, row = 0; col < m && row < m; col++, row++) {
         int piv = row;
         double maxVal = fabs(aug[row][col]);
 
-        // Paralelizar la búsqueda del pivote
-        #pragma omp parallel shared(aug, piv, maxVal, row, col, m)
+        // Búsqueda de pivote en columna 'col'
+        #pragma omp parallel shared(aug, piv, maxVal, m, row, col)
         {
-            int local_piv = row;
-            double local_max = maxVal;
-
-            // Distribución intercalada para buscar el pivote
             int num_threads = omp_get_num_threads();
-            int thread_id = omp_get_thread_num();
-            for (int k = row + thread_id; k < m; k += num_threads) {
-                if (fabs(aug[k][col]) > local_max) {
-                    local_max = fabs(aug[k][col]);
-                    local_piv = k;
+            int tid = omp_get_thread_num();
+            double local_max = maxVal;
+            int local_piv = piv;
+
+            for (int i = row + tid; i < m; i += num_threads) {
+                double v = fabs(aug[i][col]);
+                if (v > local_max) {
+                    local_max = v;
+                    local_piv = i;
                 }
             }
 
-            // Reducir el máximo local al global
             #pragma omp critical
             {
                 if (local_max > maxVal) {
@@ -234,48 +253,54 @@ double** inverse(int m, double** A) {
         }
 
         if (fabs(aug[piv][col]) < EPS) {
-            fprintf(stderr, "Error: matriz no invertible\n");
+            fprintf(stderr, "Error: matriz no invertible en columna %d\n", col);
             return NULL;
         }
 
+        // Swap de filas piv ↔ row
         if (piv != row) {
             double* tmp = aug[piv];
             aug[piv] = aug[row];
             aug[row] = tmp;
         }
 
-        double piv_val = aug[row][col];
-        #pragma omp parallel for
-        for (int j = 0; j < 2 * m; j++) {
-            aug[row][j] /= piv_val;
+        // Normalizar fila 'row'
+        double diag = aug[row][col];
+        #pragma omp parallel for shared(aug, m, row, col)
+        for (int j = 0; j < 2*m; j++) {
+            aug[row][j] /= diag;
         }
 
-        // Eliminación de filas en paralelo con distribución intercalada
-        #pragma omp parallel shared(aug, row, col, m)
+        // Eliminar resto de filas
+        #pragma omp parallel shared(aug, m, row, col)
         {
             int num_threads = omp_get_num_threads();
-            int thread_id = omp_get_thread_num();
+            int tid = omp_get_thread_num();
 
-            // Cada hilo procesa filas de forma intercalada
-            for (int i = thread_id; i < m; i += num_threads) {
-                if (i != row) {
-                    double factor = aug[i][col];
-                    for (int j = 0; j < 2 * m; j++) {
-                        aug[i][j] -= factor * aug[row][j];
-                    }
+            for (int i = tid; i < m; i += num_threads) {
+                if (i == row) continue;
+                double factor = aug[i][col];
+                for (int j = 0; j < 2*m; j++) {
+                    aug[i][j] -= factor * aug[row][j];
                 }
             }
         }
     }
 
-    double** inv = (double**)malloc(m * sizeof(double*));
-    #pragma omp parallel for
-    for (int i = 0; i < m; i++) {
-        inv[i] = (double*)malloc(m * sizeof(double));
-        for (int j = 0; j < m; j++) {
-            inv[i][j] = aug[i][j + m];
+    // Extraer la inversa de la parte derecha
+    double** inv = malloc(m * sizeof(double*));
+    #pragma omp parallel shared(inv, aug, m)
+    {
+        int num_threads = omp_get_num_threads();
+        int tid = omp_get_thread_num();
+        for (int i = tid; i < m; i += num_threads) {
+            inv[i] = malloc(m * sizeof(double));
+            for (int j = 0; j < m; j++) {
+                inv[i][j] = aug[i][j + m];
+            }
         }
     }
+
     return inv;
 }
 

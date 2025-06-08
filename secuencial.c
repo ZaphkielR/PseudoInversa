@@ -10,7 +10,7 @@
 
 // Función para imprimir una matriz en la consola
 void printMatrix(double** matriz, char* label, int m, int n) {    
-    FILE* archivo = fopen("salida.sal", "w");
+    FILE* archivo = fopen("salida_sec.sal", "w");
 
     if (!archivo) {
         perror("Error al abrir el archivo");
