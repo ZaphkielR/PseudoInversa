@@ -4,8 +4,8 @@
 
 int main() {
     // Definir dimensiones de la matriz
-    int rows = 800;  // Número de filas
-    int cols = 1000;  // Número de columnas
+    int rows = 100;  // Número de filas
+    int cols = 90;  // Número de columnas
     
     // Abrir archivo para escritura
     FILE *file = fopen("entrada.ent", "w");

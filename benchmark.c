@@ -1,9 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/wait.h>
+#include <sys/time.h>
 #include <unistd.h>
-#include <time.h>
 #include <math.h>
+
+double get_time() {
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    return t.tv_sec + t.tv_usec / 1e6;
+}
 
 int main() {
     
@@ -20,11 +25,11 @@ int main() {
     sprintf(comando_sec, "./secuencial %s", ENTRADA);
 
     printf("\nEjecutando secuencial\n");
-    clock_t start = clock();
+    double start = get_time();
     system(comando_sec);
-    clock_t end = clock();
+    double end = get_time();
     
-    double sec_time = (double)(end - start) / CLOCKS_PER_SEC;
+    double sec_time = end - start;
     printf("Tiempo de ejecución secuencial: %.6f segundos\n", sec_time);
 
     // =============================
@@ -36,20 +41,24 @@ int main() {
     int N = 11;
     par_time = (double*)malloc(N * sizeof(double));
 
+    system("gcc -fopenmp paralelo.c -o paralelo -lm");
+    printf("\nCompilando versión paralela...\n");
+
+
     for (int i = 1; i <= N; i++) {
-        printf("\nCompilando versión paralela con %d hilos...\n", (int)pow(2, i));
-        system("gcc -fopenmp paralelo.c -o paralelo -lm");
+        int num_threads = (int)pow(2, i);
 
         char comando[128];
-        sprintf(comando, "./paralelo %s %d", ENTRADA, (int)pow(2, i));
-        printf("Ejecutando con %d hilos...\n", (int)pow(2, i));
 
-        start = clock();
+        sprintf(comando, "./paralelo %s %d", ENTRADA, num_threads);
+        printf("\nEjecutando con %d hilos...\n", num_threads);
+
+        start = get_time();
         system(comando);
-        end = clock();
+        end = get_time();
 
-        par_time[i - 1] = (double)(end - start) / CLOCKS_PER_SEC;
-        printf("Tiempo de ejecución paralela con %d hilos: %.6f segundos\n", (int)pow(2, i), par_time[i - 1]);
+        par_time[i - 1] = end - start;
+        printf("Tiempo de ejecución paralela con %d hilos: %.6f segundos\n", num_threads, par_time[i - 1]);
     }
 
 
