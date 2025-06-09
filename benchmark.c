@@ -12,7 +12,7 @@ double get_time() {
 
 int main() {
     
-    char ENTRADA[] = "entrada.ent";
+    char ENTRADA[] = "entrada_6.ent";
 
     // Compilar versión secuencial
     printf("Compilando versión secuencial...\n");
