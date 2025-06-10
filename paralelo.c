@@ -20,8 +20,7 @@
  * @param n Número de columnas de la matriz
  * @param matriz Matriz a imprimir
  */
-void printMatrix(char* label, int m, int n, double matriz[m][n]) {
-     
+void printMatrix(char* label, int m, int n, double matriz[m][n]) {    
     FILE* archivo = fopen("salida.sal", "w");
 
     if (!archivo) {
@@ -33,13 +32,15 @@ void printMatrix(char* label, int m, int n, double matriz[m][n]) {
     
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
-            fprintf(archivo, "%lf ", matriz[i][j]);
+            fprintf(archivo, "%.6f ", matriz[i][j]);
         }
         fprintf(archivo, "\n");
     } 
 
     fclose(archivo);
 }
+
+
 
 /**
  * Función que calcula el rango de una matriz usando eliminación gaussiana
@@ -53,6 +54,8 @@ void printMatrix(char* label, int m, int n, double matriz[m][n]) {
  * de reducción de filas.
  */
 int rango(int m, int n, double A[m][n]) {
+    const double EPS = 1e-16;
+
     // Crear copia de la matriz original
     double temp[m][n];
     int rank = 0;
@@ -70,7 +73,7 @@ int rango(int m, int n, double A[m][n]) {
 
         // Buscar pivote en la columna actual
         for (int j = rank; j < m; j++) {
-            if (fabs(temp[j][i]) > 1e-10) {
+            if (fabs(temp[j][i]) > EPS) {
                 pivotRow = j;
                 break;
             }
@@ -163,7 +166,7 @@ void multiplicar(int m, int n, int p, double A[m][n], double B[n][p], double C[m
  * de eliminación gaussiana y cálculo de la inversa.
  */
 int inverse(int m, double A[m][m], double inv[m][m]) {
-    const double EPS = 1e-12; 
+    const double EPS = 1e-16; 
     
     // Crear matriz aumentada [A | I]
     double aug[m][2 * m];
@@ -299,12 +302,12 @@ int main(int argc, char* argv[]) {
         transpuesta(m, n, matriz, AT);
 
         // Calcular A^T * A
-        double ATA[m][m];
-        multiplicar(m, n, m, matriz, AT, ATA);
+        double AAT[m][m];
+        multiplicar(m, n, m, matriz, AT, AAT);
         
         // Invertir A^T * A
         double invATA[m][m];
-        int error = inverse(m, ATA, invATA);
+        int error = inverse(m, AAT, invATA);
 
         // Verificar si hubo error en la inversión
         if (error == 1) {
@@ -327,15 +330,21 @@ int main(int argc, char* argv[]) {
         transpuesta(m, n, matriz, AT);
 
         // Calcular A * A^T
-        double AAT[m][m];
-        multiplicar(m, n, m, matriz, AT, AAT);
+        double ATA[n][n];
+        multiplicar(n, m, n, AT, matriz, ATA);
 
         // Invertir A * A^T
-        double invAAT[m][m];
-        inverse(m, AAT, invAAT);
+        double invATA[n][n];
+        int error = inverse(n, ATA, invATA);
+
+        // Verificar si hubo error en la inversión
+        if (error == 1) {
+            printf("-1\n");
+            return 1;
+        }
 
         double P[n][m];
-        multiplicar(n, m, m, AT, invAAT, P);
+        multiplicar(n, n, m, invATA, AT, P);
 
         // Imprimir resultado
         printMatrix("L", n, m, P);

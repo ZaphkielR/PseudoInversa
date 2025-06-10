@@ -20,7 +20,7 @@
  * @param matriz Matriz a imprimir
  */
 void printMatrix(char* label, int m, int n, double matriz[m][n]) {    
-    FILE* archivo = fopen("salida_sec.sal", "w");
+    FILE* archivo = fopen("salida.sal", "w");
 
     if (!archivo) {
         perror("Error al abrir el archivo");
@@ -50,6 +50,8 @@ void printMatrix(char* label, int m, int n, double matriz[m][n]) {
  * para encontrar el rango. Implementación secuencial.
  */
 int rango(int m, int n, double A[m][n]) {
+    const double EPS = 1e-16;
+
     // Crear copia de la matriz original
     double temp[m][n];
     int rank = 0;
@@ -67,7 +69,7 @@ int rango(int m, int n, double A[m][n]) {
 
         // Buscar pivote en la columna actual
         for (int j = rank; j < m; j++) {
-            if (fabs(temp[j][i]) > 1e-10) {
+            if (fabs(temp[j][i]) > EPS) {
                 pivotRow = j;
                 break;
             }
@@ -154,63 +156,66 @@ void multiplicar(int m, int n, int p, double A[m][n], double B[n][p], double C[m
  * eliminación gaussiana con pivoteo parcial.
  */
 int inverse(int m, double A[m][m], double inv[m][m]) {
-    const double EPS = 1e-12;  
+    const double EPS = 1e-16;
 
-    // Crear matriz aumentada [A | I]
     double aug[m][2 * m];
 
+    // Construir matriz aumentada [A | I]
     for (int i = 0; i < m; i++) {
-        // Copiar matriz original a la parte izquierda
-        for (int j = 0; j < m; j++) {         
+        for (int j = 0; j < m; j++) {
             aug[i][j] = A[i][j];
-        }
-
-        // Crear matriz identidad en la parte derecha
-        for (int j = 0; j < m; j++) {         
             aug[i][j + m] = (i == j) ? 1.0 : 0.0;
         }
     }
 
-    // Para cada columna
-    for (int col = 0, row = 0; col < m && row < m; col++, row++) {
-        // Buscar el mejor pivote (pivoteo parcial)
+    // Eliminar columna por columna
+    for (int col = 0, row = 0; col < m && row < m; col++) {
+        // Buscar el mejor pivote
         int piv = row;
-        for (int k = row + 1; k < m; k++)
-            if (fabs(aug[k][col]) > fabs(aug[piv][col]))
+        for (int k = row + 1; k < m; k++) {
+            if (fabs(aug[k][col]) > fabs(aug[piv][col])) {
                 piv = k;
+            }
+        }
 
-        // Verificar si hay pivote válido
+        // Verificar pivote
         if (fabs(aug[piv][col]) < EPS) {
-            fprintf(stderr, "Error: matriz no invertible (pivote cero)\n");
+            fprintf(stderr, "Error: matriz no invertible (pivote ~ 0)\n");
             return 1;
         }
 
-        // Intercambiar filas si el pivote no está en la posición correcta
+        // Intercambiar filas
         if (piv != row) {
             for (int j = 0; j < 2 * m; j++) {
                 double tmp = aug[piv][j];
                 aug[piv][j] = aug[row][j];
                 aug[row][j] = tmp;
             }
-        }   
+        }
 
         // Normalizar fila pivote
-        double piv_val = aug[row][col];
-        for (int j = 0; j < 2 * m; j++)
-            aug[row][j] /= piv_val;
+        double div = aug[row][col];
+        for (int j = 0; j < 2 * m; j++) {
+            aug[row][j] /= div;
+        }
 
-        // Reducir las demás filas usando la fila pivote
+        // Eliminar columna en otras filas
         for (int i = 0; i < m; i++) {
             if (i == row) continue;
             double factor = aug[i][col];
-            for (int j = 0; j < 2 * m; j++)
+            for (int j = 0; j < 2 * m; j++) {
                 aug[i][j] -= factor * aug[row][j];
+            }
         }
+
+        row++;  
     }
 
+    // Copiar parte derecha como inversa
     for (int i = 0; i < m; i++) {
-        for (int j = 0; j < m; j++)
+        for (int j = 0; j < m; j++) {
             inv[i][j] = aug[i][j + m];
+        }
     }
 
     return 0;
@@ -266,12 +271,12 @@ int main(int argc, char* argv[]) {
         transpuesta(m, n, matriz, AT);
 
         // Calcular A^T * A
-        double ATA[m][m];
-        multiplicar(m, n, m, matriz, AT, ATA);
+        double AAT[m][m];
+        multiplicar(m, n, m, matriz, AT, AAT);
         
         // Invertir A^T * A
         double invATA[m][m];
-        int error = inverse(m, ATA, invATA);
+        int error = inverse(m, AAT, invATA);
 
         // Verificar si hubo error en la inversión
         if (error == 1) {
@@ -294,12 +299,12 @@ int main(int argc, char* argv[]) {
         transpuesta(m, n, matriz, AT);
 
         // Calcular A * A^T
-        double AAT[m][m];
-        multiplicar(m, n, m, matriz, AT, AAT);
+        double ATA[n][n];
+        multiplicar(n, m, n, AT, matriz, ATA);
 
         // Invertir A * A^T
-        double invAAT[m][m];
-        int error = inverse(m, AAT, invAAT);
+        double invATA[n][n];
+        int error = inverse(n, ATA, invATA);
 
         // Verificar si hubo error en la inversión
         if (error == 1) {
@@ -309,7 +314,7 @@ int main(int argc, char* argv[]) {
 
         // Calcular pseudo-inversa final: A^T * (A * A^T)^-1
         double P[n][m];
-        multiplicar(n, m, m, AT, invAAT, P);
+        multiplicar(n, n, m, invATA, AT, P);
 
         // Imprimir resultado
         printMatrix("L", n, m, P);
